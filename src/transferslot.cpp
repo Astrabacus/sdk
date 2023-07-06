@@ -64,9 +64,9 @@ const dstime TransferSlot::PROGRESSTIMEOUT = 10;
 #if defined(__ANDROID__) || defined(USE_IOS)
     const m_off_t TransferSlot::MAX_REQ_SIZE = 2097152; // 2 MB
 #elif defined (_WIN32) || defined(HAVE_AIO_RT)
-    const m_off_t TransferSlot::MAX_REQ_SIZE = 16777216; // 16 MB
+    const m_off_t TransferSlot::MAX_REQ_SIZE = 41943040; // 40 MB [Previous value: 16777216 -> 16 MB]
 #else
-    const m_off_t TransferSlot::MAX_REQ_SIZE = 4194304; // 4 MB
+    const m_off_t TransferSlot::MAX_REQ_SIZE = 16777216; // 16 MB [Previous value: 4194304 -> 4 MB]
 #endif
 
 const m_off_t TransferSlot::MAX_GAP_SIZE = 256 * 1024 * 1024; // 256 MB
@@ -252,7 +252,6 @@ TransferSlot::~TransferSlot()
                     anyData = true;
                     if (fa && fa->fwrite(outputPiece->buf.datastart(), static_cast<unsigned>(outputPiece->buf.datalen()), outputPiece->pos))
                     {
-
                         LOG_verbose << "Sync write succeeded";
                         transferbuf.bufferWriteCompleted(i, true);
                         cachetransfer = true;
@@ -800,7 +799,6 @@ void TransferSlot::doio(MegaClient* client, TransferDbCommitter& committer)
                         HttpReqDL *downloadRequest = static_cast<HttpReqDL*>(reqs[i].get());
                         if (reqs[i]->size == reqs[i]->bufpos || downloadRequest->buffer_released)   // downloadRequest->buffer_released being true indicates we're retrying this asyncIO
                         {
-
                             if (!downloadRequest->buffer_released)
                             {
                                 transferbuf.submitBuffer(i, new TransferBufferManager::FilePiece(downloadRequest->dlpos, downloadRequest->release_buf())); // resets size & bufpos.  finalize() is taken care of in the transferbuf

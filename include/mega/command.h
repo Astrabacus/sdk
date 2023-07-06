@@ -287,7 +287,7 @@ public:
     bool procresult(Result, JSON&) override;
 
     CommandSendSignupLink2(MegaClient*, const char*, const char*);
-    CommandSendSignupLink2(MegaClient*, const char*, const char*, byte *, byte*, byte*);
+    CommandSendSignupLink2(MegaClient*, const char*, const char*, byte *, byte*, byte*, int ctag);
 };
 
 class MEGA_API CommandConfirmSignupLink2 : public Command
@@ -560,7 +560,7 @@ public:
 
 class MEGA_API CommandGetFile : public Command
 {
-    using Cb = std::function<bool(const Error &/*e*/, m_off_t /*size*/, m_time_t /*ts*/, m_time_t /*tm*/,
+    using Cb = std::function<bool(const Error &/*e*/, m_off_t /*size*/,
     dstime /*timeleft*/, std::string* /*filename*/, std::string* /*fingerprint*/, std::string* /*fileattrstring*/,
     const std::vector<std::string> &/*urls*/, const std::vector<std::string> &/*ips*/)>;
     Cb mCompletion;
@@ -930,7 +930,7 @@ class MEGA_API CommandSendEvent : public Command
 public:
     bool procresult(Result, JSON&) override;
 
-    CommandSendEvent(MegaClient*, int, const char *);
+    CommandSendEvent(MegaClient*, int, const char *, bool = false, const char * = nullptr);
 };
 
 class MEGA_API CommandSupportTicket : public Command
@@ -1507,10 +1507,10 @@ public:
 
     bool procresult(Result, JSON&) override;
 
-    CommandBackupSyncFetch(std::function<void(Error, vector<Data>&)>);
+    CommandBackupSyncFetch(std::function<void(const Error&, const vector<Data>&)>);
 
 private:
-    std::function<void(Error, vector<Data>&)> completion;
+    std::function<void(const Error&, const vector<Data>&)> completion;
 };
 
 

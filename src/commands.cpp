@@ -762,7 +762,7 @@ void CommandGetFile::callFailedCompletion(const Error &e)
     assert(mCompletion);
     if (mCompletion)
     {
-        mCompletion(e, -1, -1, -1, 0, nullptr, nullptr, nullptr, {}, {});
+        mCompletion(e, -1, 0, nullptr, nullptr, nullptr, {}, {});
     }
 }
 
@@ -783,7 +783,6 @@ bool CommandGetFile::procresult(Result r, JSON& json)
     m_off_t s = -1;
     dstime tl = 0;
     std::unique_ptr<byte[]> buf;
-    m_time_t ts = 0, tm = 0;
 
     // credentials relevant to a non-TransferSlot scenario (node query)
     string fileattrstring;
@@ -827,14 +826,6 @@ bool CommandGetFile::procresult(Result r, JSON& json)
 
             case 's':
                 s = json.getint();
-                break;
-
-            case MAKENAMEID2('t', 's'):
-                ts = json.getint();
-                break;
-
-            case MAKENAMEID3('t', 'm', 'd'):
-                tm = ts + json.getint();
                 break;
 
             case MAKENAMEID2('a', 't'):
@@ -912,7 +903,7 @@ bool CommandGetFile::procresult(Result r, JSON& json)
 
                         case EOO:
                             { //succeded, call completion function!
-                                return mCompletion ? mCompletion(e, s, ts, tm, tl,
+                                return mCompletion ? mCompletion(e, s, tl,
                                             &filenamestring, &filefingerprint, &fileattrstring,
                                             tempurls, tempips) : false;
                             }
@@ -960,7 +951,7 @@ CommandSetAttr::CommandSetAttr(MegaClient* client, Node* n, SymmCipher* cipher, 
     h = n->nodeHandle();
     tag = 0;
 
-    completion = move(c);
+    completion = std::move(c);
 }
 
 bool CommandSetAttr::procresult(Result r, JSON& json)
@@ -979,7 +970,7 @@ CommandPutNodes::CommandPutNodes(MegaClient* client, NodeHandle th,
 {
     byte key[FILENODEKEYLENGTH];
 
-#ifdef DEBUG
+#ifndef NDEBUG
     assert(newnodes.size() > 0);
     for (auto& n : newnodes) assert(n.canChangeVault == canChangeVault);
 #endif
@@ -1373,7 +1364,7 @@ CommandMoveNode::CommandMoveNode(MegaClient* client, Node* n, Node* t, syncdel_t
     tpsk.get(this);
 
     tag = 0;
-    completion = move(c);
+    completion = std::move(c);
 }
 
 bool CommandMoveNode::procresult(Result r, JSON& json)
@@ -1467,7 +1458,7 @@ bool CommandMoveNode::procresult(Result r, JSON& json)
 }
 
 CommandDelNode::CommandDelNode(MegaClient* client, NodeHandle th, bool keepversions, int cmdtag, std::function<void(NodeHandle, Error)>&& f, bool canChangeVault)
-    : mResultFunction(move(f))
+    : mResultFunction(std::move(f))
 {
     cmd("d");
     notself(client);
@@ -1932,6 +1923,7 @@ bool CommandLogin::procresult(Result r, JSON& json)
                 }
 
                 client->openStatusTable(true);
+                client->loadJourneyIdCacheValues();
                 client->app->login_result(API_OK);
                 client->getaccountdetails(std::make_shared<AccountDetails>(), false, false, true, false, false, false);
                 return true;
@@ -1997,7 +1989,7 @@ CommandSetShare::CommandSetShare(MegaClient* client, Node* n, User* u, accesslev
     access = a;
     mWritable = writable;
 
-    completion = move(f);
+    completion = std::move(f);
     assert(completion);
 
     cmd("s2");
@@ -2864,7 +2856,7 @@ bool CommandEnumerateQuotaItems::procresult(Result r, JSON& json)
         {
             // just read currency data, keep reading objects for each pro/business plan
             readingL = false;
-            client->app->enumeratequotaitems_result(move(currencyData));
+            client->app->enumeratequotaitems_result(std::move(currencyData));
             continue;
         }
         else
@@ -2872,7 +2864,7 @@ bool CommandEnumerateQuotaItems::procresult(Result r, JSON& json)
             client->app->enumeratequotaitems_result(type, product, prolevel, gbstorage,
                                                     gbtransfer, months, amount, amountMonth, localPrice,
                                                     description.c_str(), ios_id.c_str(), android_id.c_str(),
-                                                    move(bizPlan));
+                                                    std::move(bizPlan));
         }
     }
 
@@ -3077,7 +3069,7 @@ CommandPutMultipleUAVer::CommandPutMultipleUAVer(MegaClient *client, const usera
 {
     this->attrs = *attrs;
 
-    mCompletion = completion ? move(completion) :
+    mCompletion = completion ? std::move(completion) :
         [this](Error e) {
             this->client->app->putua_result(e);
         };
@@ -3201,7 +3193,7 @@ CommandPutUAVer::CommandPutUAVer(MegaClient* client, attr_t at, const byte* av, 
     this->at = at;
     this->av.assign((const char*)av, avl);
 
-    mCompletion = completion ? move(completion) :
+    mCompletion = completion ? std::move(completion) :
         [this](Error e) {
             this->client->app->putua_result(e);
         };
@@ -3313,7 +3305,7 @@ CommandPutUA::CommandPutUA(MegaClient* /*client*/, attr_t at, const byte* av, un
     this->at = at;
     this->av.assign((const char*)av, avl);
 
-    mCompletion = completion ? move(completion) :
+    mCompletion = completion ? std::move(completion) :
                   [this](Error e){
                         client->app->putua_result(e);
                   };
@@ -3418,17 +3410,17 @@ CommandGetUA::CommandGetUA(MegaClient* /*client*/, const char* uid, attr_t at, c
     this->at = at;
     this->ph = ph ? string(ph) : "";
 
-    mCompletionErr = completionErr ? move(completionErr) :
+    mCompletionErr = completionErr ? std::move(completionErr) :
         [this](error e) {
             client->app->getua_result(e);
         };
 
-    mCompletionBytes = completionBytes ? move(completionBytes) :
+    mCompletionBytes = completionBytes ? std::move(completionBytes) :
         [this](byte* b, unsigned l, attr_t e) {
             client->app->getua_result(b, l, e);
         };
 
-    mCompletionTLV = compltionTLV ? move(compltionTLV) :
+    mCompletionTLV = compltionTLV ? std::move(compltionTLV) :
         [this](TLVstore* t, attr_t e) {
             client->app->getua_result(t, e);
         };
@@ -4014,7 +4006,7 @@ CommandGetUserData::CommandGetUserData(MegaClient *client, int tag, std::functio
 
     this->tag = tag;
 
-    mCompletion = completion ? move(completion) :
+    mCompletion = completion ? std::move(completion) :
         [this](string* name, string* pubk, string* privk, error e) {
             this->client->app->userdata_result(name, pubk, privk, e);
         };
@@ -4047,7 +4039,9 @@ bool CommandGetUserData::procresult(Result r, JSON& json)
     string versionPushSetting;
     string contactLinkVerification;
     string versionContactLinkVerification;
+#ifndef NDEBUG
     handle me = UNDEF;
+#endif
     string chatFolder;
     string versionChatFolder;
     string cameraUploadFolder;
@@ -4077,6 +4071,10 @@ bool CommandGetUserData::procresult(Result r, JSON& json)
     string versionBackupNames;
     string cookieSettings;
     string versionCookieSettings;
+    string appPrefs;
+    string versionAppPrefs;
+    string ccPrefs;
+    string versionCcPrefs;
 #ifdef ENABLE_SYNC
     string jsonSyncConfigData;
     string jsonSyncConfigDataVersion;
@@ -4154,7 +4152,10 @@ bool CommandGetUserData::procresult(Result r, JSON& json)
             break;
 
         case 'u':
-            me = json.gethandle(MegaClient::USERHANDLE);
+#ifndef NDEBUG
+            me = 
+#endif
+                 json.gethandle(MegaClient::USERHANDLE);
             break;
 
         case MAKENAMEID8('l', 'a', 's', 't', 'n', 'a', 'm', 'e'):
@@ -4219,6 +4220,14 @@ bool CommandGetUserData::procresult(Result r, JSON& json)
 
         case MAKENAMEID5('^', '!', 'b', 'a', 'k'):
             parseUserAttribute(json, myBackupsFolder, versionMyBackupsFolder);
+            break;
+
+        case MAKENAMEID8('*', '!', 'a', 'P', 'r', 'e', 'f', 's'):
+            parseUserAttribute(json, appPrefs, versionAppPrefs);
+            break;
+
+        case MAKENAMEID8('*', '!', 'c', 'c', 'P', 'r', 'e', 'f'):
+            parseUserAttribute(json, ccPrefs, versionCcPrefs);
             break;
 
 #ifdef ENABLE_SYNC
@@ -4581,6 +4590,16 @@ bool CommandGetUserData::procresult(Result r, JSON& json)
                 if (!myBackupsFolder.empty())
                 {
                     changes += u->updateattr(ATTR_MY_BACKUPS_FOLDER, &myBackupsFolder, &versionMyBackupsFolder);
+                }
+
+                if (!appPrefs.empty())
+                {
+                    changes += u->updateattr(ATTR_APPS_PREFS, &appPrefs, &versionAppPrefs);
+                }
+
+                if (!ccPrefs.empty())
+                {
+                    changes += u->updateattr(ATTR_CC_PREFS, &ccPrefs, &versionCcPrefs);
                 }
 
                 if (aliases.size())
@@ -4983,8 +5002,10 @@ CommandGetUserQuota::CommandGetUserQuota(MegaClient* client, std::shared_ptr<Acc
 bool CommandGetUserQuota::procresult(Result r, JSON& json)
 {
     m_off_t td;
+#ifndef NDEBUG
     bool got_storage = false;
     bool got_storage_used = false;
+#endif
     int uslw = -1;
 
     if (r.wasErrorOrOK())
@@ -5067,7 +5088,9 @@ bool CommandGetUserQuota::procresult(Result r, JSON& json)
             case MAKENAMEID5('c', 's', 't', 'r', 'g'):
             // Your total account storage usage
                 details->storage_used = json.getint();
+#ifndef NDEBUG
                 got_storage_used = true;
+#endif
                 break;
 
             case MAKENAMEID6('c', 's', 't', 'r', 'g', 'n'):
@@ -5113,7 +5136,9 @@ bool CommandGetUserQuota::procresult(Result r, JSON& json)
             case MAKENAMEID5('m', 's', 't', 'r', 'g'):
             // maximum storage allowance
                 details->storage_max = json.getint();
+#ifndef NDEBUG
                 got_storage = true;
+#endif
                 break;
 
             case MAKENAMEID6('c', 'a', 'x', 'f', 'e', 'r'):
@@ -5462,7 +5487,7 @@ CommandSetPH::CommandSetPH(MegaClient* client, Node* n, int del, m_time_t cets, 
     h = n->nodehandle;
     ets = cets;
     tag = ctag;
-    completion = move(f);
+    completion = std::move(f);
     assert(completion);
 
     cmd("l");
@@ -5640,7 +5665,7 @@ bool CommandGetPH::procresult(Result r, JSON& json)
                         newnode->nodekey.assign((char*)key, FILENODEKEYLENGTH);
                         newnode->attrstring.reset(new string(a));
 
-                        client->putnodes(client->mNodeManager.getRootNodeFiles(), NoVersioning, move(newnodes), nullptr, 0, false);
+                        client->putnodes(client->mNodeManager.getRootNodeFiles(), NoVersioning, std::move(newnodes), nullptr, 0, false);
                     }
                     else if (havekey)
                     {
@@ -5808,6 +5833,7 @@ bool CommandResumeEphemeralSession::procresult(Result r, JSON& json)
                 client->uid = Base64Str<MegaClient::USERHANDLE>(client->me);
 
                 client->openStatusTable(true);
+                client->loadJourneyIdCacheValues();
                 client->app->ephemeral_result(uh, pw);
                 return true;
 
@@ -5875,7 +5901,7 @@ CommandSendSignupLink2::CommandSendSignupLink2(MegaClient* client, const char* e
     tag = client->reqtag;
 }
 
-CommandSendSignupLink2::CommandSendSignupLink2(MegaClient* client, const char* email, const char* name, byte *clientrandomvalue, byte *encmasterkey, byte *hashedauthkey)
+CommandSendSignupLink2::CommandSendSignupLink2(MegaClient* client, const char* email, const char* name, byte *clientrandomvalue, byte *encmasterkey, byte *hashedauthkey, int ctag)
 {
     cmd("uc2");
     arg("n", (byte*)name, int(strlen(name)));
@@ -5885,7 +5911,7 @@ CommandSendSignupLink2::CommandSendSignupLink2(MegaClient* client, const char* e
     arg("k", encmasterkey, SymmCipher::KEYLENGTH);
     arg("v", 2);
 
-    tag = client->reqtag;
+    tag = ctag;
 }
 
 bool CommandSendSignupLink2::procresult(Result r, JSON& json)
@@ -6405,11 +6431,32 @@ bool CommandSendReport::procresult(Result r, JSON& json)
     return r.wasErrorOrOK();
 }
 
-CommandSendEvent::CommandSendEvent(MegaClient *client, int type, const char *desc)
+CommandSendEvent::CommandSendEvent(MegaClient *client, int type, const char *desc, bool addJourneyId, const char *viewId)
 {
     cmd("log");
     arg("e", type);
     arg("m", desc);
+
+    // Attach JourneyID
+    if (addJourneyId)
+    {
+        string journeyId = client->getJourneyId();
+        if (!journeyId.empty())
+        {
+            arg("j", journeyId.c_str());
+            m_off_t currentms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+            arg("ms", currentms);
+        }
+        else
+        {
+            LOG_warn << "[CommandSendEvent::CommandSendEvent] Add JourneyID flag is ON, but there is no JourneyID value set";
+        }
+    }
+    // Attach ViewID (generated by the SDK for the client, handled by the client)
+    if (viewId && *viewId) // Cannot be empty
+    {
+        arg("v", viewId);
+    }
 
     tag = client->reqtag;
 }
@@ -6749,6 +6796,9 @@ bool CommandConfirmEmailLink::procresult(Result r, JSON& json)
             client->mapuser(u->userhandle, email.c_str()); // update email used as index for user's map
             u->changed.email = true;
             client->notifyuser(u);
+
+            // produce a callback to update cached email in MegaApp
+            client->reportLoggedInChanges();
         }
         // TODO: once we manage multiple emails, add the new email to the list of emails
     }
@@ -8726,7 +8776,7 @@ bool CommandGetRegisteredContacts::procresult(Result r, JSON& json)
                     else
                     {
                         registeredContacts.emplace_back(
-                                    make_tuple(Base64::atob(entryUserDetail), move(id),
+                                    make_tuple(Base64::atob(entryUserDetail), std::move(id),
                                                Base64::atob(userDetail)));
                     }
                     exit = true;
@@ -8797,7 +8847,7 @@ bool CommandGetCountryCallingCodes::procresult(Result r, JSON& json)
                         std::string code;
                         while (json.storeobject(&code))
                         {
-                            callingCodes.emplace_back(move(code));
+                            callingCodes.emplace_back(std::move(code));
                         }
                         json.leavearray();
                     }
@@ -8812,7 +8862,7 @@ bool CommandGetCountryCallingCodes::procresult(Result r, JSON& json)
                     }
                     else
                     {
-                        countryCallingCodes.emplace(make_pair(move(countryCode), move(callingCodes)));
+                        countryCallingCodes.emplace(make_pair(std::move(countryCode), std::move(callingCodes)));
                     }
                     exit = true;
                     break;
@@ -9067,8 +9117,8 @@ bool CommandBackupRemove::procresult(Result r, JSON& json)
     return r.wasErrorOrOK();
 }
 
-CommandBackupSyncFetch::CommandBackupSyncFetch(std::function<void(Error, vector<Data>&)> f)
-    : completion(move(f))
+CommandBackupSyncFetch::CommandBackupSyncFetch(std::function<void(const Error&, const vector<Data>&)> f)
+    : completion(std::move(f))
 {
     cmd("sf");
 }
@@ -9252,12 +9302,12 @@ bool CommandGetBanners::procresult(Result r, JSON& json)
             }
         }
 
-        banners.emplace_back(make_tuple(id, move(title), move(description), move(img), move(url), move(bimg), move(dsp)));
+        banners.emplace_back(make_tuple(id, std::move(title), std::move(description), std::move(img), std::move(url), std::move(bimg), std::move(dsp)));
 
         json.leaveobject();
     }
 
-    client->app->getbanners_result(move(banners));
+    client->app->getbanners_result(std::move(banners));
 
     return true;
 }
@@ -9390,7 +9440,7 @@ bool CommandSE::procExtendedError(JSON& json, int64_t& errCode, handle& eid) con
 
 CommandPutSet::CommandPutSet(MegaClient* cl, Set&& s, unique_ptr<string> encrAttrs, string&& encrKey,
                              std::function<void(Error, const Set*)> completion)
-    : mSet(new Set(move(s))), mCompletion(completion)
+    : mSet(new Set(std::move(s))), mCompletion(completion)
 {
     cmd("asp");
 
@@ -9434,13 +9484,13 @@ bool CommandPutSet::procresult(Result r, JSON& json)
             mSet->setUser(user);
             mSet->setCTs(cts);
             mSet->setChanged(Set::CH_NEW);
-            s = client->addSet(move(*mSet));
+            s = client->addSet(std::move(*mSet));
         }
         else // update existing
         {
             assert(mSet->id() == sId);
 
-            if (!client->updateSet(move(*mSet)))
+            if (!client->updateSet(std::move(*mSet)))
             {
                 LOG_warn << "Sets: command 'asp' succeed, but Set was not found";
                 e = API_ENOENT;
@@ -9528,10 +9578,10 @@ bool CommandFetchSet::procresult(Result r, JSON& json)
 
     if (mCompletion)
     {
-        Set* s = sets.empty() ? new Set() : (new Set(move(sets.begin()->second)));
+        Set* s = sets.empty() ? new Set() : (new Set(std::move(sets.begin()->second)));
         elementsmap_t* els = elements.empty()
                              ? new elementsmap_t()
-                             : new elementsmap_t(move(elements.begin()->second));
+                             : new elementsmap_t(std::move(elements.begin()->second));
         mCompletion(API_OK, s, els);
     }
 
@@ -9540,7 +9590,7 @@ bool CommandFetchSet::procresult(Result r, JSON& json)
 
 CommandPutSetElements::CommandPutSetElements(MegaClient* cl, vector<SetElement>&& els, vector<pair<string, string>>&& encrDetails,
                                                std::function<void(Error, const vector<const SetElement*>*, const vector<int64_t>*)> completion)
-    : mElements(new vector<SetElement>(move(els))), mCompletion(completion)
+    : mElements(new vector<SetElement>(std::move(els))), mCompletion(completion)
 {
     cmd("aepb");
 
@@ -9629,7 +9679,7 @@ bool CommandPutSetElements::procresult(Result r, JSON& json)
                 el.setId(elementId);
                 el.setTs(ts);
                 el.setOrder(order);
-                addedEls.push_back(client->addOrUpdateSetElement(move(el)));
+                addedEls.push_back(client->addOrUpdateSetElement(std::move(el)));
             }
 
             if (!json.leaveobject())
@@ -9657,7 +9707,7 @@ bool CommandPutSetElements::procresult(Result r, JSON& json)
 
 CommandPutSetElement::CommandPutSetElement(MegaClient* cl, SetElement&& el, unique_ptr<string> encrAttrs, string&& encrKey,
                                                std::function<void(Error, const SetElement*)> completion)
-    : mElement(new SetElement(move(el))), mCompletion(completion)
+    : mElement(new SetElement(std::move(el))), mCompletion(completion)
 {
     cmd("aep");
 
@@ -9695,7 +9745,7 @@ bool CommandPutSetElement::procresult(Result r, JSON& json)
     m_time_t ts = 0;
     int64_t order = 0;
     Error e = API_OK;
-#ifdef DEBUG
+#ifndef NDEBUG
     bool isNew = mElement->id() == UNDEF;
 #endif
     const SetElement* el = nullptr;
@@ -9711,7 +9761,7 @@ bool CommandPutSetElement::procresult(Result r, JSON& json)
         mElement->setOrder(order); // this is now present in all 'aep' responses
         assert(isNew || mElement->id() == elementId);
         mElement->setId(elementId);
-        el = client->addOrUpdateSetElement(move(*mElement));
+        el = client->addOrUpdateSetElement(std::move(*mElement));
     }
 
     if (mCompletion)
@@ -9724,7 +9774,7 @@ bool CommandPutSetElement::procresult(Result r, JSON& json)
 
 CommandRemoveSetElements::CommandRemoveSetElements(MegaClient* cl, handle sid, vector<handle>&& eids,
                                                    std::function<void(Error, const vector<int64_t>*)> completion)
-    : mSetId(sid), mElemIds(move(eids)), mCompletion(completion)
+    : mSetId(sid), mElemIds(std::move(eids)), mCompletion(completion)
 {
     cmd("aerb");
 
@@ -9846,7 +9896,7 @@ bool CommandRemoveSetElement::procresult(Result r, JSON& json)
 }
 
 CommandExportSet::CommandExportSet(MegaClient* cl, Set&& s, bool makePublic, std::function<void(Error)> completion)
-    : mSet(new Set(move(s))), mCompletion(completion)
+    : mSet(new Set(std::move(s))), mCompletion(completion)
 {
     cmd("ass");
     arg("id", (byte*)&mSet->id(), MegaClient::SETHANDLE);
@@ -9875,7 +9925,7 @@ bool CommandExportSet::procresult(Result r, JSON& json)
         mSet->setPublicId(publicId);
         mSet->setTs(ts);
         mSet->setChanged(Set::CH_EXPORTED);
-        if (!client->updateSet(move(*mSet)))
+        if (!client->updateSet(std::move(*mSet)))
         {
             LOG_warn << "Sets: comand 'ass' succeeded, but Set was not found";
             e = API_ENOENT;

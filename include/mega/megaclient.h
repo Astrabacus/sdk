@@ -257,9 +257,7 @@ struct FileAttributesPending : public mapWithLookupExisting<UploadHandle, Upload
     }
 };
 
-
 class MegaClient;
-
 
 class MEGA_API KeyManager
 {
@@ -543,7 +541,7 @@ public:
     void cancelsignup();
 
     // full account confirmation/creation support
-    string sendsignuplink2(const char*, const char *, const char*);
+    string sendsignuplink2(const char*, const char *, const char*, int ctag = 0);
     void resendsignuplink2(const char*, const char *);
 
     void confirmsignuplink2(const byte*, unsigned);
@@ -587,6 +585,7 @@ public:
     void reportLoggedInChanges();
     sessiontype_t mLastLoggedInReportedState = NOTLOGGEDIN;
     handle mLastLoggedInMeHandle = UNDEF;
+    string mLastLoggedInMyEmail;
 
     // check the reason of being blocked
     void whyamiblocked();
@@ -1026,8 +1025,8 @@ public:
     void userfeedbackstore(const char *);
 
     // send event
-    void sendevent(int, const char *);
-    void sendevent(int, const char *, int tag);
+    void sendevent(int, const char *, const char* viewId = nullptr, bool addJourneyId = false);
+    void sendevent(int, const char *, int tag, const char* viewId = nullptr, bool addJourneyId = false);
 
     // create support ticket
     void supportticket(const char *message, int type);
@@ -1311,7 +1310,6 @@ private:
     // Working lock
     unique_ptr<HttpReq> workinglockcs;
 
-private:
     // Request status monitor
     unique_ptr<HttpReq> mReqStatCS;
 
@@ -1463,7 +1461,6 @@ public:
 
     void dodiscarduser(User* u, bool discardnotified);
 
-public:
     void enabletransferresumption(const char *loggedoutid = NULL);
     void disabletransferresumption(const char *loggedoutid = NULL);
 
@@ -2090,6 +2087,12 @@ public:
     // create a new folder with given name and stores its node's handle into the user's attribute ^!bak
     error setbackupfolder(const char* foldername, int tag, std::function<void(Error)> addua_completion);
 
+    // fetch backups and syncs from BC, search bkpId among them, disable the backup or sync, update sds attribute, for a backup move or delete its contents
+    void removeFromBC(handle bkpId, handle bkpDest, std::function<void(const Error&)> f);
+
+    // fetch backups and syncs from BC
+    void getBackupInfo(std::function<void(const Error&, const vector<CommandBackupSyncFetch::Data>&)> f);
+
     // sets the auth token to be used when logged into a folder link
     void setFolderLinkAccountAuth(const char *auth);
 
@@ -2263,9 +2266,6 @@ public:
     MegaClient(MegaApp*, shared_ptr<Waiter>, HttpIO*, DbAccess*, GfxProc*, const char*, const char*, unsigned workerThreadCount);
     ~MegaClient();
 
-    void filenameAnomalyDetected(FilenameAnomalyType type, const LocalPath& localPath, const string& remotePath);
-    unique_ptr<FilenameAnomalyReporter> mFilenameAnomalyReporter;
-
 struct MyAccountData
 {
     void setProLevel(AccountType prolevel) { mProLevel = prolevel; }
@@ -2281,6 +2281,42 @@ private:
     m_time_t mProUntil = -1;
 } mMyAccount;
 
+// JourneyID for cs API requests and log events. Populated from "ug"/"gmf" commands response.
+// It is kept in memory and persisted in disk until a full logout.
+struct JourneyID
+{
+private:
+    // The JourneyID value - a 16-char hex string (or an empty string if it hasn't been retrieved yet)
+    string mJidValue;
+    // The tracking flag: used to attach the JourneyID to cs requests
+    bool mTrackValue;
+    // Local cache file
+    unique_ptr<FileSystemAccess>& mClientFsaccess;
+    LocalPath mCacheFilePath;
+    bool storeValuesToCache(bool storeJidValue, bool storeTrackValue) const;
+
+public:
+    static constexpr size_t HEX_STRING_SIZE = 16;
+    JourneyID(unique_ptr<FileSystemAccess>& clientFsaccess, const LocalPath& rootPath);
+    // Updates the JourneyID and the tracking flag based on the provided jidValue, which must be a 16-char hex string.
+    // When jidValue is not empty:
+    // - Sets mJidValue to jidValue only if it is currently unset (empty).
+    // - Sets mTrackValue if it is currently unset (false).
+    // When jidValue is empty:
+    // - Keeps mJidValue unchanged.
+    // - Unsets mTrackValue if it is currently set (true).
+    // Returns true if either the JourneyID (mJidValue) or the tracking flag (mTrackValue) have been updated.
+    bool setValue(const string& jidValue);
+    // Get the JourneyID (empty if still unset)
+    string getValue() const;
+    // Check if the tracking flag is set, i.e.: the JourneyID must be tracked (used in cs API reqs)
+    bool isTrackingOn() const;
+    // Load the JourneyID and the tracking flag stored in the cache file.
+    bool loadValuesFromCache();
+    // Remove local cache file and reset the JourneyID so a new one can be set from the next "ug"/"gmf" command.
+    bool resetCacheAndValues();
+};
+
 private:
     // Since it's quite expensive to create a SymmCipher, this are provided to use for quick operations - just set the key and use.
     SymmCipher tmpnodecipher;
@@ -2293,12 +2329,36 @@ private:
 
     static vector<byte> deriveKey(const char* password, const string& salt, size_t derivedKeySize);
 
+//
+// JourneyID and ViewID
+//
+    // JourneyID for cs API requests and log events
+    JourneyID mJourneyId;
+
+public:
+
+    // Checks if there is a valid JourneyID and tracking flag is set
+    bool trackJourneyId() const;
+
+    // Retrieves the JourneyID value, which is a 16-character hexadecimal string (for submission to the API)
+    // If the JourneyID is still unset, it returns an empty string.
+    string getJourneyId() const;
+
+    // Load the JourneyID values from the local cache.
+    bool loadJourneyIdCacheValues();
+
+    // Set the JourneyID value from a 16-character hexadecimal string (obtained from API commands "ug"/"gmf")
+    // See JourneyID::setValue() for full doc
+    bool setJourneyId(const string& jid);
+
+    // Generates a unique ViewID that the caller should store and can optionally use in subsequent sendevent() calls.
+    // ViewID is employed by apps for event logging. It is generated by the SDK to ensure consistent and shared logic across applications.
+    static string generateViewId(PrnGen& rng);
 
 //
 // Sets and Elements
 //
 
-public:
     // generate "asp" command
     void putSet(Set&& s, std::function<void(Error, const Set*)> completion);
 
